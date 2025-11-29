@@ -7,38 +7,64 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 @TeleOp(name = "Basic Drive", group = "Tutorial")
 public class BasicDrive extends LinearOpMode {
 
-    // Declare motors
-    private DcMotor leftMotor;
-    private DcMotor rightMotor;
+    private DcMotor frontLeft, frontRight, backLeft, backRight;
 
     @Override
     public void runOpMode() {
 
-        // Connect motors to hardware names from the Robot Controller configuration
-        leftMotor  = hardwareMap.get(DcMotor.class, "leftMotor");
-        rightMotor = hardwareMap.get(DcMotor.class, "rightMotor");
+        // Hardware mapping
+        frontLeft  = hardwareMap.get(DcMotor.class, "frontLeft");
+        frontRight = hardwareMap.get(DcMotor.class, "frontRight");
+        backLeft   = hardwareMap.get(DcMotor.class, "backLeft");
+        backRight  = hardwareMap.get(DcMotor.class, "backRight");
 
-        // Reverse one motor if needed so both move forward
-        rightMotor.setDirection(DcMotor.Direction.REVERSE);
+        // Motor directions — typical config for mecanum
+        frontLeft.setDirection(DcMotor.Direction.REVERSE);
+        backLeft.setDirection(DcMotor.Direction.REVERSE);
+        frontRight.setDirection(DcMotor.Direction.FORWARD);
+        backRight.setDirection(DcMotor.Direction.FORWARD);
 
-        // Tell Driver Station robot is ready
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
-        // Wait for the game to start
         waitForStart();
 
-        // Run until STOP is pressed
         while (opModeIsActive()) {
-            // Tank drive control
-            double leftPower  = -gamepad1.left_stick_y;  // forward/back
-            double rightPower = -gamepad1.right_stick_y; // forward/back
 
-            leftMotor.setPower(leftPower);
-            rightMotor.setPower(rightPower);
+            // Read joystick inputs\
+            double y  = -gamepad1.left_stick_y;   // forward/back
+            double x  = gamepad1.left_stick_x;    // strafe
+            double rx = gamepad1.right_stick_x;   // rotate
 
-            telemetry.addData("Left Power", leftPower);
-            telemetry.addData("Right Power", rightPower);
+            // Mecanum drive calculations
+            double frontLeftPower  = y + x + rx;
+            double backLeftPower   = y - x + rx;
+            double frontRightPower = y - x - rx;
+            double backRightPower  = y + x - rx;
+
+            // Normalize if any power > 1
+            double max = Math.max(
+                    Math.max(Math.abs(frontLeftPower), Math.abs(backLeftPower)),
+                    Math.max(Math.abs(frontRightPower), Math.abs(backRightPower))
+            );
+            if (max > 1.0) {
+                frontLeftPower  /= max;
+                backLeftPower   /= max;
+                frontRightPower /= max;
+                backRightPower  /= max;
+            }
+
+            // Set power
+            frontLeft.setPower(frontLeftPower);
+            backLeft.setPower(backLeftPower);
+            frontRight.setPower(frontRightPower);
+            backRight.setPower(backRightPower);
+
+            // Debug telemetry
+            telemetry.addData("FL", frontLeftPower);
+            telemetry.addData("FR", frontRightPower);
+            telemetry.addData("BL", backLeftPower);
+            telemetry.addData("BR", backRightPower);
             telemetry.update();
         }
     }
