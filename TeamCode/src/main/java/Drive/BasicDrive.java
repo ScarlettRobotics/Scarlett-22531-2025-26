@@ -2,27 +2,18 @@ package Drive;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotor;
+
+import Core.SystemsManager;
 
 @TeleOp(name = "Basic Drive", group = "Tutorial")
 public class BasicDrive extends LinearOpMode {
 
-    private DcMotor frontLeft, frontRight, backLeft, backRight;
+    private SystemsManager systems = new SystemsManager();
 
     @Override
     public void runOpMode() {
 
-        // Hardware mapping
-        frontLeft  = hardwareMap.get(DcMotor.class, "frontLeft");
-        frontRight = hardwareMap.get(DcMotor.class, "frontRight");
-        backLeft   = hardwareMap.get(DcMotor.class, "backLeft");
-        backRight  = hardwareMap.get(DcMotor.class, "backRight");
-
-        // Motor directions — typical config for mecanum
-        frontLeft.setDirection(DcMotor.Direction.REVERSE);
-        backLeft.setDirection(DcMotor.Direction.REVERSE);
-        frontRight.setDirection(DcMotor.Direction.FORWARD);
-        backRight.setDirection(DcMotor.Direction.FORWARD);
+        systems.init(hardwareMap);
 
         telemetry.addData("Status", "Initialized");
         telemetry.update();
@@ -31,50 +22,42 @@ public class BasicDrive extends LinearOpMode {
 
         while (opModeIsActive()) {
 
-            // Read joystick inputs\
-            double y  = -gamepad1.left_stick_y;   // forward/back
-            double x  = gamepad1.left_stick_x;    // strafe
+            double y = -gamepad1.left_stick_y;     // forward/back
+            double x = gamepad1.left_stick_x;      // strafe
             double rx = -gamepad1.right_stick_x;   // rotate
-            if(gamepad1.dpad_up){
-                y = 0.25;
-            } else if (gamepad1.dpad_down) {
-                y = -0.25;
-            }  else if (gamepad1.dpad_left) {
-                x = -0.25;
-            } else if (gamepad1.dpad_right) {
-                x = 0.25;
-            }
-            // Mecanum drive calculations
-            double frontLeftPower  = y + x + rx;
-            double backLeftPower   = y - x + rx;
-            double frontRightPower = y - x - rx;
-            double backRightPower  = y + x - rx;
 
-            // Normalize if any power > 1
-            double max = Math.max(
-                    Math.max(Math.abs(frontLeftPower), Math.abs(backLeftPower)),
-                    Math.max(Math.abs(frontRightPower), Math.abs(backRightPower))
-            );
-            if (max > 1.0) {
-                frontLeftPower  /= max;
-                backLeftPower   /= max;
-                frontRightPower /= max;
-                backRightPower  /= max;
+            // D-Pad overrides
+            if (gamepad1.dpad_up)    y = 0.25;
+            if (gamepad1.dpad_down)  y = -0.25;
+            if (gamepad1.dpad_left)  x = -0.25;
+            if (gamepad1.dpad_right) x = 0.25;
+
+            // Mecanum math
+            double fl = y + x + rx;
+            double bl = y - x + rx;
+            double fr = y - x - rx;
+            double br = y + x - rx;
+
+            // Normalize powers
+            double max = Math.max(Math.max(Math.abs(fl), Math.abs(bl)),
+                    Math.max(Math.abs(fr), Math.abs(br)));
+            if (max > 1) {
+                fl /= max;
+                bl /= max;
+                fr /= max;
+                br /= max;
             }
 
-            // Set power
-            frontLeft.setPower(frontLeftPower);
-            backLeft.setPower(backLeftPower);
-            frontRight.setPower(frontRightPower);
-            backRight.setPower(backRightPower);
+            systems.frontLeft.setPower(fl);
+            systems.backLeft.setPower(bl);
+            systems.frontRight.setPower(fr);
+            systems.backRight.setPower(br);
 
-            // Debug telemetry
-            telemetry.addData("FL", frontLeftPower);
-            telemetry.addData("FR", frontRightPower);
-            telemetry.addData("BL", backLeftPower);
-            telemetry.addData("BR", backRightPower);
+            telemetry.addData("FL", fl);
+            telemetry.addData("FR", fr);
+            telemetry.addData("BL", bl);
+            telemetry.addData("BR", br);
             telemetry.update();
-
         }
     }
 }
