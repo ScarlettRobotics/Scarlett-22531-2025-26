@@ -34,8 +34,16 @@ public class BasicDrive extends LinearOpMode {
             // Read joystick inputs\
             double y  = -gamepad1.left_stick_y;   // forward/back
             double x  = gamepad1.left_stick_x;    // strafe
-            double rx = gamepad1.right_stick_x;   // rotate
-
+            double rx = -gamepad1.right_stick_x;   // rotate
+            if(gamepad1.dpad_up){
+                y = 0.25;
+            } else if (gamepad1.dpad_down) {
+                y = -0.25;
+            }  else if (gamepad1.dpad_left) {
+                x = -0.25;
+            } else if (gamepad1.dpad_right) {
+                x = 0.25;
+            }
             // Mecanum drive calculations
             double frontLeftPower  = y + x + rx;
             double backLeftPower   = y - x + rx;
@@ -66,6 +74,7 @@ public class BasicDrive extends LinearOpMode {
             telemetry.addData("BL", backLeftPower);
             telemetry.addData("BR", backRightPower);
             telemetry.update();
+
         }
     }
 }
