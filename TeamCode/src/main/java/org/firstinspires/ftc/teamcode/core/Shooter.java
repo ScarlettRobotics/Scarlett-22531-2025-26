@@ -20,7 +20,7 @@ public class Shooter {
     public static final double FLYWHEEL_MAX_POWER = 1.0;
 
     // CRServo power for mid roller (negative if you want it to spin "backwards")
-    public static final double MID_ROLLER_POWER   = -0.6;
+    public static final double MID_ROLLER_POWER   = 0.6;
 
     // Indexer positions – tune on the bot
     public static final double LEFT_REST_POS      = 0.45;
