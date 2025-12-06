@@ -10,10 +10,12 @@ public class CompTeleOp extends LinearOpMode {
 
     private SystemsManager systems;
 
-    @Override
-    public void runOpMode() throws InterruptedException {
+    // Track last A state so we can detect a *press* (rising edge)
+    private boolean lastAPressed = false;
 
-        // Create SystemsManager with the FTC hardwareMap + telemetry
+    @Override
+    public void runOpMode() {
+
         systems = new SystemsManager(hardwareMap, telemetry);
 
         telemetry.addLine("CompTeleOp initialized");
@@ -41,30 +43,59 @@ public class CompTeleOp extends LinearOpMode {
                 double x  = gamepad1.left_stick_x;   // strafe
                 double rx = gamepad1.right_stick_x;  // rotate
 
-                // Optional small scale on strafe to help with mecanum drift
-                x *= 1.1;
+                x *= 1.1; // optional small compensation
 
                 systems.drive.driveRobotCentric(y, x, rx);
             }
 
-            // ---------- SHOOTER (Gamepad 1) ----------
-            double shooterPower = gamepad1.right_trigger;
-            systems.shooter.setFlywheelPower(shooterPower);
+            // ---------- SHOOT ONE BALL ON A PRESS ----------
+            boolean aNow = gamepad1.a;
 
-            if (gamepad1.a) {
-                systems.shooter.feed();
-            } else if (gamepad1.b) {
-                systems.shooter.rest();
+            // rising edge: was not pressed, now pressed
+            if (aNow && !lastAPressed) {
+                shootOneBall();
             }
 
-            // ---------- TELEMETRY ----------
+            lastAPressed = aNow;
+
             telemetry.addData("Drive mode", dpadActive ? "SLOW (D-pad)" : "FAST (sticks)");
-            telemetry.addData("Shooter power", "%.2f", shooterPower);
             telemetry.update();
 
             idle();
         }
 
         systems.stopAll();
+    }
+
+    /**
+     * Fires exactly one ball by:
+     *  1) Spinning up flywheel
+     *  2) Running mid roller + indexers
+     *  3) Stopping everything
+     *
+     * NOTE: This is blocking. During this time, drive will pause.
+     */
+    private void shootOneBall() {
+        // 1) Spin up flywheel
+        systems.shooter.setFlywheelOn(true);
+        systems.shooter.setMidRollerOn(false); // keep roller off during spin-up
+        systems.shooter.restIndexers();        // hold ball in place
+
+        sleep(400); // ms – tune this spin-up time on your bot
+
+        // 2) Feed ball: mid roller + indexers
+        systems.shooter.setMidRollerOn(true);  // spins backwards (MID_ROLLER_POWER < 0)
+        systems.shooter.feedIndexers();        // push ball into wheels
+
+        sleep(750); // ms – tune for "just one ball"
+
+        // 3) Stop everything
+        systems.shooter.setFlywheelOn(true);
+        systems.shooter.setMidRollerOn(false);
+
+        sleep(2000);
+
+        systems.shooter.restIndexers();
+
     }
 }
