@@ -20,13 +20,15 @@ public class Shooter {
     public static final double FLYWHEEL_MAX_POWER = 1.0;
 
     // CRServo power for mid roller (negative if you want it to spin "backwards")
-    public static final double MID_ROLLER_POWER   = 0.6;
+    // Increased magnitude for more speed
+    public static final double MID_ROLLER_POWER   = 1.0;
 
     // Indexer positions – tune on the bot
-    public static final double LEFT_REST_POS      = 0.45;
-    public static final double RIGHT_REST_POS     = 0.55;
-    public static final double LEFT_FEED_POS      = 0.15;
-    public static final double RIGHT_FEED_POS     = 0.85;
+    // Wider range so the indexers rotate more between rest and feed
+    public static final double LEFT_REST_POS      = 0.5;
+    public static final double RIGHT_REST_POS     = 0.5;
+    public static final double LEFT_FEED_POS      = 0.05;  // more travel
+    public static final double RIGHT_FEED_POS     = 0.95;  // more travel
 
     public Shooter(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
@@ -83,6 +85,7 @@ public class Shooter {
         rightIndexer.setPosition(RIGHT_FEED_POS);
 
         if (telemetry != null) {
+
             telemetry.addData("Indexers", "FEED (L=%.2f R=%.2f)",
                     LEFT_FEED_POS, RIGHT_FEED_POS);
         }

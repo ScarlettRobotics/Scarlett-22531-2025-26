@@ -78,24 +78,21 @@ public class CompTeleOp extends LinearOpMode {
     private void shootOneBall() {
         // 1) Spin up flywheel
         systems.shooter.setFlywheelOn(true);
-        systems.shooter.setMidRollerOn(false); // keep roller off during spin-up
-        systems.shooter.restIndexers();        // hold ball in place
+        systems.shooter.setMidRollerOn(true); // spins backwards (MID_ROLLER_POWER < 0)
+        systems.shooter.feedIndexers();     // hold ball in place
 
         sleep(400); // ms – tune this spin-up time on your bot
 
-        // 2) Feed ball: mid roller + indexers
-        systems.shooter.setMidRollerOn(true);  // spins backwards (MID_ROLLER_POWER < 0)
+        // 2) Feed ball: mid roller + indexer // spins backwards (MID_ROLLER_POWER < 0)
         systems.shooter.feedIndexers();        // push ball into wheels
 
         sleep(750); // ms – tune for "just one ball"
 
         // 3) Stop everything
         systems.shooter.setFlywheelOn(true);
-        systems.shooter.setMidRollerOn(false);
 
         sleep(2000);
 
-        systems.shooter.restIndexers();
-
+        systems.shooter.feedIndexers();
     }
 }
