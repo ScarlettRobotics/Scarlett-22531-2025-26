@@ -33,15 +33,6 @@ public class Drive {
     private static final double SLOW_POWER = 0.30;  // D-pad creep speed
     private static final double STRAFE_COMP = 1.10; // mecanum strafe compensation (optional)
 
-    // If left/right feel swapped, it's almost always strafe and/or turn sign.
-    // Flip these without touching motor directions first (safer for auto).
-    private static final boolean INVERT_STRAFE = true;   // <-- set true if pushing right strafes left
-    private static final boolean INVERT_TURN   = false;  // <-- set true if pushing right turns left
-
-    // Slow down / smooth turning (fixes "spinning too fast")
-    private static final double TURN_SCALE = 0.55;  // lower = slower max spin
-    private static final double TURN_EXPO  = 1.6;   // >1 = less twitch near center
-
     // ---------------- Encoder math ----------------
     // NeveRest Orbital 20: encoder is AFTER gearbox.
     // Base: 1120 ticks/rev. Your 24in test went 23in, so tuned:
@@ -68,7 +59,7 @@ public class Drive {
         bl = hw.get(DcMotorEx.class, "backLeft");
         br = hw.get(DcMotorEx.class, "backRight");
 
-        // Typical mecanum directions (adjust ONLY if forward/back is wrong)
+        // Typical mecanum directions (adjust if your bot drives backwards)
         fl.setDirection(DcMotor.Direction.FORWARD);
         bl.setDirection(DcMotor.Direction.FORWARD);
         fr.setDirection(DcMotor.Direction.REVERSE);
@@ -102,27 +93,18 @@ public class Drive {
         // D-pad overrides sticks (slow creep)
         if (dpadUp || dpadDown || dpadLeft || dpadRight) {
             double y = 0, x = 0;
-
             if (dpadUp) y = SLOW_POWER;
             if (dpadDown) y = -SLOW_POWER;
-
-            // Apply strafe inversion consistently for D-pad too
-            double strafeSign = INVERT_STRAFE ? -1.0 : 1.0;
-            if (dpadRight) x =  SLOW_POWER * strafeSign;
-            if (dpadLeft)  x = -SLOW_POWER * strafeSign;
-
+            if (dpadRight) x = SLOW_POWER;
+            if (dpadLeft) x = -SLOW_POWER;
             driveRobotCentric(y, x, 0);
             return;
         }
 
         // Sticks
-        double y = -leftStickY; // stick up = forward
-
-        double strafeSign = INVERT_STRAFE ? -1.0 : 1.0;
-        double x = (leftStickX * strafeSign) * STRAFE_COMP;
-
-        double turnSign = INVERT_TURN ? -1.0 : 1.0;
-        double turn = applyExpo(rightStickX * turnSign, TURN_EXPO) * TURN_SCALE;
+        double y = -leftStickY;            // stick up = forward
+        double x = leftStickX * STRAFE_COMP;
+        double turn = rightStickX;
 
         driveRobotCentric(y, x, turn);
     }
@@ -303,11 +285,5 @@ public class Drive {
         while (d >= 180) d -= 360;
         while (d < -180) d += 360;
         return d;
-    }
-
-    private static double applyExpo(double v, double expo) {
-        double sign = Math.signum(v);
-        double a = Math.abs(v);
-        return sign * Math.pow(a, expo);
     }
 }
