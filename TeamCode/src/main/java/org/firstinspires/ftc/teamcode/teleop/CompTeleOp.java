@@ -2,97 +2,62 @@ package org.firstinspires.ftc.teamcode.teleop;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import org.firstinspires.ftc.teamcode.core.Robot;
 
-import org.firstinspires.ftc.teamcode.core.SystemsManager;
-
+/**
+ * Competition TeleOp:
+ *  - Gamepad 1: driver (mecanum)
+ *  - Gamepad 2: operator (shooter)
+ */
 @TeleOp(name = "CompTeleOp", group = "TeleOp")
 public class CompTeleOp extends LinearOpMode {
 
-    private SystemsManager systems;
-
-    // Track last A state so we can detect a *press* (rising edge)
-    private boolean lastAPressed = false;
-
     @Override
     public void runOpMode() {
+        Robot robot = new Robot(hardwareMap, telemetry);
 
-        systems = new SystemsManager(hardwareMap, telemetry);
+        boolean shooterOn = false;
+        boolean lastA = false;
+        boolean lastB = false;
 
-        telemetry.addLine("CompTeleOp initialized");
+        telemetry.addLine("TeleOp ready");
         telemetry.update();
 
         waitForStart();
 
         while (opModeIsActive()) {
 
-            // ---------- DRIVE (Gamepad 1) ----------
-            boolean dpadActive = gamepad1.dpad_up || gamepad1.dpad_down
-                    || gamepad1.dpad_left || gamepad1.dpad_right;
+            // ---------------- Driver (gamepad1) ----------------
+            robot.drive.teleOpDrive(
+                    gamepad1.left_stick_y,
+                    gamepad1.left_stick_x,
+                    gamepad1.right_stick_x,
+                    gamepad1.dpad_up,
+                    gamepad1.dpad_down,
+                    gamepad1.dpad_left,
+                    gamepad1.dpad_right
+            );
 
-            if (dpadActive) {
-                // Slow, precise movement with D-pad
-                systems.drive.driveSlow(
-                        gamepad1.dpad_up,
-                        gamepad1.dpad_down,
-                        gamepad1.dpad_left,
-                        gamepad1.dpad_right
-                );
-            } else {
-                // Fast mecanum drive with sticks
-                double y  = -gamepad1.left_stick_y;  // forward/back (invert)
-                double x  = gamepad1.left_stick_x;   // strafe
-                double rx = gamepad1.right_stick_x;  // rotate
+            // ---------------- Operator (gamepad2) ----------------
+            // A toggles ON, B toggles OFF (edge-detected so holding doesn't spam)
+            boolean aNow = gamepad2.a;
+            boolean bNow = gamepad2.b;
 
-                x *= 1.1; // optional small compensation
+            if (aNow && !lastA) shooterOn = true;
+            if (bNow && !lastB) shooterOn = false;
 
-                systems.drive.driveRobotCentric(y, x, rx);
-            }
+            lastA = aNow;
+            lastB = bNow;
 
-            // ---------- SHOOT ONE BALL ON A PRESS ----------
-            boolean aNow = gamepad1.a;
+            if (shooterOn) robot.shooter.on();
+            else robot.shooter.stop();
 
-            // rising edge: was not pressed, now pressed
-            if (aNow && !lastAPressed) {
-                shootOneBall();
-            }
-
-            lastAPressed = aNow;
-
-            telemetry.addData("Drive mode", dpadActive ? "SLOW (D-pad)" : "FAST (sticks)");
+            telemetry.addData("Shooter", shooterOn ? "ON" : "OFF");
             telemetry.update();
 
             idle();
         }
 
-        systems.stopAll();
-    }
-
-    /**
-     * Fires exactly one ball by:
-     *  1) Spinning up flywheel
-     *  2) Running mid roller + indexers
-     *  3) Stopping everything
-     *
-     * NOTE: This is blocking. During this time, drive will pause.
-     */
-    private void shootOneBall() {
-        // 1) Spin up flywheel
-        systems.shooter.setFlywheelOn(true);
-        systems.shooter.setMidRollerOn(true); // spins backwards (MID_ROLLER_POWER < 0)
-        systems.shooter.feedIndexers();     // hold ball in place
-
-        sleep(400); // ms – tune this spin-up time on your bot
-
-        // 2) Feed ball: mid roller + indexer // spins backwards (MID_ROLLER_POWER < 0)
-        systems.shooter.feedIndexers();        // push ball into wheels
-
-        sleep(750); // ms – tune for "just one ball"
-
-        // 3) Stop everything
-        systems.shooter.setFlywheelOn(true);
-
-        sleep(2000);
-
-        systems.shooter.feedIndexers();
+        robot.stopAll();
     }
 }

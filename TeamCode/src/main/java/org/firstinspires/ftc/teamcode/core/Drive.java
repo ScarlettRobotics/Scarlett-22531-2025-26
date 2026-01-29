@@ -1,151 +1,313 @@
 package org.firstinspires.ftc.teamcode.core;
 
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.robotcore.hardware.*;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
+/**
+ * Drive subsystem (mecanum).
+ *
+ * TeleOp:
+ *  - Left stick: forward/back + strafe
+ *  - Right stick X: turn
+ *  - D-pad: slow "creep" mode
+ *
+ * Autonomous:
+ *  - Encoders for distance
+ *  - IMU for heading hold (drives straighter than encoders alone)
+ *
+ * Hardware names (must match RC config):
+ *  - frontLeft, frontRight, backLeft, backRight
+ *  - imu
+ */
 public class Drive {
 
-    private final DcMotorEx frontLeft;
-    private final DcMotorEx frontRight;
-    private final DcMotorEx backLeft;
-    private final DcMotorEx backRight;
-
+    // ---------------- Hardware ----------------
+    private final DcMotorEx fl, fr, bl, br;
+    private final IMU imu;
     private final Telemetry telemetry;
 
-    // ====== TUNABLES ======
+    // ---------------- Feel / controls ----------------
+    private static final double SLOW_POWER = 0.30;  // D-pad creep speed
+    private static final double STRAFE_COMP = 1.10; // mecanum strafe compensation (optional)
 
-    // Slow speed for D-pad creeping
-    private static final double SLOW_POWER = 0.3;
+    // If left/right feel swapped, it's almost always strafe and/or turn sign.
+    // Flip these without touching motor directions first (safer for auto).
+    private static final boolean INVERT_STRAFE = true;   // <-- set true if pushing right strafes left
+    private static final boolean INVERT_TURN   = false;  // <-- set true if pushing right turns left
 
-    // If forward/backwards feels flipped, change this to -1
-    private static final double Y_DIR = 1.0;
+    // Slow down / smooth turning (fixes "spinning too fast")
+    private static final double TURN_SCALE = 0.55;  // lower = slower max spin
+    private static final double TURN_EXPO  = 1.6;   // >1 = less twitch near center
 
-    // If strafe feels flipped (right goes left), change this to -1
-    private static final double X_DIR = 1.0;
+    // ---------------- Encoder math ----------------
+    // NeveRest Orbital 20: encoder is AFTER gearbox.
+    // Base: 1120 ticks/rev. Your 24in test went 23in, so tuned:
+    private static final double TICKS_PER_REV = 1168.0; // tuned (was 1120)
+    private static final double WHEEL_DIAM_IN = 3.94;   // 100 mm
+    private static final double EXTERNAL_GEAR_RATIO = 1.0; // chain/belt/gears external to motor (usually 1.0)
 
-    // If turn feels flipped, change this to -1
-    private static final double TURN_DIR = 1.0;
+    private static final double TICKS_PER_IN =
+            (TICKS_PER_REV * EXTERNAL_GEAR_RATIO) / (Math.PI * WHEEL_DIAM_IN);
 
-    public Drive(HardwareMap hardwareMap, Telemetry telemetry) {
-        this.telemetry = telemetry;
+    // ---------------- IMU hold (tune later) ----------------
+    private static final double HEADING_KP = 0.02;      // raise if it curves, lower if it wiggles
+    private static final double MAX_CORRECTION = 0.35;  // prevents violent over-correction
 
-        // Make sure these names match your Control Hub config
-        frontLeft  = hardwareMap.get(DcMotorEx.class, "frontLeft");
-        frontRight = hardwareMap.get(DcMotorEx.class, "frontRight");
-        backLeft   = hardwareMap.get(DcMotorEx.class, "backLeft");
-        backRight  = hardwareMap.get(DcMotorEx.class, "backRight");
+    private double headingOffsetDeg = 0.0;
+    private double holdHeadingDeg = 0.0;
 
-        // Directions – these are a good starting point for most mecanum bots.
-        // If something is off after you swapped motors, FIRST try flipping
-        // these directions before touching the math.
-        frontLeft.setDirection(DcMotor.Direction.FORWARD);
-        backLeft.setDirection(DcMotor.Direction.FORWARD);
-        frontRight.setDirection(DcMotor.Direction.REVERSE);
-        backRight.setDirection(DcMotor.Direction.REVERSE);
+    // ---------------- Constructor ----------------
+    public Drive(HardwareMap hw, Telemetry tel) {
+        telemetry = tel;
 
-        frontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        frontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        fl = hw.get(DcMotorEx.class, "frontLeft");
+        fr = hw.get(DcMotorEx.class, "frontRight");
+        bl = hw.get(DcMotorEx.class, "backLeft");
+        br = hw.get(DcMotorEx.class, "backRight");
 
-        frontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        frontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        // Typical mecanum directions (adjust ONLY if forward/back is wrong)
+        fl.setDirection(DcMotor.Direction.FORWARD);
+        bl.setDirection(DcMotor.Direction.FORWARD);
+        fr.setDirection(DcMotor.Direction.REVERSE);
+        br.setDirection(DcMotor.Direction.REVERSE);
+
+        setBrake(true);
+        resetEncoders();
+
+        // IMU init: update orientation if your hub is mounted differently.
+        imu = hw.get(IMU.class, "imu");
+        imu.initialize(new IMU.Parameters(
+                new RevHubOrientationOnRobot(
+                        RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                        RevHubOrientationOnRobot.UsbFacingDirection.FORWARD
+                )
+        ));
+        imu.resetYaw();
+        resetHeading();
     }
 
-    /**
-     * Normal mecanum drive using sticks (fast mode).
-     * robotY: forward/back  (+ forward)
-     * robotX: strafe left/right (+ right)
-     * turn:   rotate CCW (+ CCW)
-     */
-    public void driveRobotCentric(double robotY, double robotX, double turn) {
-        // Apply global direction corrections (if something feels flipped)
-        robotY *= Y_DIR;
-        robotX *= X_DIR;
-        turn   *= TURN_DIR;
-
-        // Standard mecanum math
-        double fl = robotY + robotX + turn;
-        double bl = robotY - robotX + turn;
-        double fr = robotY - robotX - turn;
-        double br = robotY + robotX - turn;
-
-        // Normalize so no value exceeds 1.0
-        double max = Math.max(1.0,
-                Math.max(Math.abs(fl),
-                        Math.max(Math.abs(bl),
-                                Math.max(Math.abs(fr), Math.abs(br)))));
-
-        fl /= max;
-        bl /= max;
-        fr /= max;
-        br /= max;
-
-        frontLeft.setPower(fl);
-        backLeft.setPower(bl);
-        frontRight.setPower(fr);
-        backRight.setPower(br);
-
-        if (telemetry != null) {
-            telemetry.addData("Drive", "FL:%.2f FR:%.2f BL:%.2f BR:%.2f",
-                    fl, fr, bl, br);
-        }
-    }
+    // =========================================================
+    // TeleOp
+    // =========================================================
 
     /**
-     * Slow movement using D-pad.
-     * Up/Down = forward/back
-     * Left/Right = strafe
+     * One-call TeleOp driving. Feed gamepad1 values directly.
      */
-    public void driveSlow(boolean up, boolean down, boolean left, boolean right) {
-        double y = 0;
-        double x = 0;
+    public void teleOpDrive(double leftStickY, double leftStickX, double rightStickX,
+                            boolean dpadUp, boolean dpadDown, boolean dpadLeft, boolean dpadRight) {
 
-        if (up)    y =  SLOW_POWER;
-        if (down)  y = -SLOW_POWER;
-        if (right) x =  SLOW_POWER;   // strafe right
-        if (left)  x = -SLOW_POWER;   // strafe left
-
-        driveRobotCentric(y, x, 0);
-    }
-
-    /**
-     * High-level helper for TeleOp:
-     *  - Joysticks = fast mecanum drive (including strafe)
-     *  - D-pad = slow creep (overrides joysticks)
-     *
-     * Pass gamepad1 sticks and D-pad directly into this.
-     */
-    public void driveFromInputs(double leftStickY,
-                                double leftStickX,
-                                double rightStickX,
-                                boolean dpadUp,
-                                boolean dpadDown,
-                                boolean dpadLeft,
-                                boolean dpadRight) {
-
-        // If any D-pad is pressed, use slow mode
+        // D-pad overrides sticks (slow creep)
         if (dpadUp || dpadDown || dpadLeft || dpadRight) {
-            driveSlow(dpadUp, dpadDown, dpadLeft, dpadRight);
+            double y = 0, x = 0;
+
+            if (dpadUp) y = SLOW_POWER;
+            if (dpadDown) y = -SLOW_POWER;
+
+            // Apply strafe inversion consistently for D-pad too
+            double strafeSign = INVERT_STRAFE ? -1.0 : 1.0;
+            if (dpadRight) x =  SLOW_POWER * strafeSign;
+            if (dpadLeft)  x = -SLOW_POWER * strafeSign;
+
+            driveRobotCentric(y, x, 0);
             return;
         }
 
-        // Otherwise, use full-speed mecanum with joysticks
-        double y = -leftStickY;      // forward = stick up
-        double x =  leftStickX;      // strafe = stick left/right
-        double turn = rightStickX;   // rotation
+        // Sticks
+        double y = -leftStickY; // stick up = forward
+
+        double strafeSign = INVERT_STRAFE ? -1.0 : 1.0;
+        double x = (leftStickX * strafeSign) * STRAFE_COMP;
+
+        double turnSign = INVERT_TURN ? -1.0 : 1.0;
+        double turn = applyExpo(rightStickX * turnSign, TURN_EXPO) * TURN_SCALE;
 
         driveRobotCentric(y, x, turn);
     }
 
+    /**
+     * Core mecanum math (robot-centric).
+     */
+    public void driveRobotCentric(double y, double x, double turn) {
+        double flp = y + x + turn;
+        double blp = y - x + turn;
+        double frp = y - x - turn;
+        double brp = y + x - turn;
+
+        double max = Math.max(1.0,
+                Math.max(Math.abs(flp),
+                        Math.max(Math.abs(blp),
+                                Math.max(Math.abs(frp), Math.abs(brp)))));
+
+        fl.setPower(flp / max);
+        bl.setPower(blp / max);
+        fr.setPower(frp / max);
+        br.setPower(brp / max);
+
+        if (telemetry != null) telemetry.addData("Heading", "%.1f", getHeadingDeg());
+    }
+
+    // =========================================================
+    // IMU heading
+    // =========================================================
+
+    /** Makes current heading become "0". Call at the start of auto. */
+    public void resetHeading() {
+        headingOffsetDeg = rawYawDeg();
+    }
+
+    /** Heading in degrees, wrapped to [-180, 180). */
+    public double getHeadingDeg() {
+        return wrapDeg(rawYawDeg() - headingOffsetDeg);
+    }
+
+    private double rawYawDeg() {
+        return imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+    }
+
+    // =========================================================
+    // Encoders / Autonomous movement
+    // =========================================================
+
+    /** Reset encoder counts to zero. */
+    public void resetEncoders() {
+        setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
+
+    /** Begin an encoder move while holding the current heading with IMU. */
+    public void startDriveStraightIMU(double inches, double power) {
+        holdHeadingDeg = getHeadingDeg();
+
+        int ticks = (int) Math.round(inches * TICKS_PER_IN);
+
+        fl.setTargetPosition(fl.getCurrentPosition() + ticks);
+        fr.setTargetPosition(fr.getCurrentPosition() + ticks);
+        bl.setTargetPosition(bl.getCurrentPosition() + ticks);
+        br.setTargetPosition(br.getCurrentPosition() + ticks);
+
+        setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        setAllPower(Math.abs(power));
+    }
+
+    /** Call repeatedly during an encoder move to keep it straight using IMU. */
+    public void updateHeadingHold(double basePower) {
+        double error = wrapDeg(holdHeadingDeg - getHeadingDeg());
+        double correction = clamp(HEADING_KP * error, -MAX_CORRECTION, MAX_CORRECTION);
+
+        double left = clamp(basePower + correction, 0, 1);
+        double right = clamp(basePower - correction, 0, 1);
+
+        fl.setPower(left);
+        bl.setPower(left);
+        fr.setPower(right);
+        br.setPower(right);
+
+        if (telemetry != null) {
+            telemetry.addData("Hold", "target %.1f now %.1f err %.1f",
+                    holdHeadingDeg, getHeadingDeg(), error);
+        }
+    }
+
+    public boolean isBusy() {
+        return fl.isBusy() || fr.isBusy() || bl.isBusy() || br.isBusy();
+    }
+
+    /**
+     * Blocking helper for Autonomous.
+     * Safe because it has a timeout and calls idle() correctly.
+     */
+    public void driveStraightBlocking(LinearOpMode opMode, double inches, double power, double timeoutS) {
+        startDriveStraightIMU(inches, power);
+
+        double start = opMode.getRuntime();
+        while (opMode.opModeIsActive()
+                && isBusy()
+                && (opMode.getRuntime() - start) < timeoutS) {
+
+            updateHeadingHold(Math.abs(power));
+            if (telemetry != null) telemetry.update();
+            opMode.idle();
+        }
+
+        stop();
+    }
+
+    // =========================================================
+    // Turning (IMU-only, simple & reliable)
+    // =========================================================
+
+    /** Blocking turn to a target heading (degrees). */
+    public void turnToHeadingBlocking(LinearOpMode opMode, double targetDeg, double maxTurnPower,
+                                      double toleranceDeg, double timeoutS) {
+
+        double start = opMode.getRuntime();
+        while (opMode.opModeIsActive() && (opMode.getRuntime() - start) < timeoutS) {
+            double error = wrapDeg(targetDeg - getHeadingDeg());
+
+            if (Math.abs(error) <= toleranceDeg) break;
+
+            // Proportional turn (simple)
+            double turn = clamp(0.01 * error, -maxTurnPower, maxTurnPower);
+            driveRobotCentric(0, 0, turn);
+
+            if (telemetry != null) {
+                telemetry.addData("Turn", "target %.1f now %.1f err %.1f", targetDeg, getHeadingDeg(), error);
+                telemetry.update();
+            }
+            opMode.idle();
+        }
+        stop();
+    }
+
+    // =========================================================
+    // Stop / utilities
+    // =========================================================
+
     public void stop() {
-        frontLeft.setPower(0);
-        frontRight.setPower(0);
-        backLeft.setPower(0);
-        backRight.setPower(0);
+        setAllPower(0);
+        setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
+
+    private void setMode(DcMotor.RunMode mode) {
+        fl.setMode(mode);
+        fr.setMode(mode);
+        bl.setMode(mode);
+        br.setMode(mode);
+    }
+
+    private void setAllPower(double p) {
+        fl.setPower(p);
+        fr.setPower(p);
+        bl.setPower(p);
+        br.setPower(p);
+    }
+
+    private void setBrake(boolean on) {
+        DcMotor.ZeroPowerBehavior z = on
+                ? DcMotor.ZeroPowerBehavior.BRAKE
+                : DcMotor.ZeroPowerBehavior.FLOAT;
+        fl.setZeroPowerBehavior(z);
+        fr.setZeroPowerBehavior(z);
+        bl.setZeroPowerBehavior(z);
+        br.setZeroPowerBehavior(z);
+    }
+
+    private static double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    private static double wrapDeg(double d) {
+        while (d >= 180) d -= 360;
+        while (d < -180) d += 360;
+        return d;
+    }
+
+    private static double applyExpo(double v, double expo) {
+        double sign = Math.signum(v);
+        double a = Math.abs(v);
+        return sign * Math.pow(a, expo);
     }
 }
