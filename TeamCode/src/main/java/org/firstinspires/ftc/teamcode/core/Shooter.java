@@ -20,7 +20,7 @@ public class Shooter {
     private final Telemetry telemetry;
 
     // Tunables
-    private static final double FLYWHEEL_POWER = 1.0;
+    private static final double FLYWHEEL_POWER = .80;
     private static final double MID_ROLLER_POWER = 1.0;
 
     private static final double LEFT_REST = 0.50;

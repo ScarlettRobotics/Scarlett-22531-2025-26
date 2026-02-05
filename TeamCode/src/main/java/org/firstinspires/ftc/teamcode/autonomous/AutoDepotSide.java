@@ -8,7 +8,7 @@ import org.firstinspires.ftc.teamcode.core.Robot;
  * Auto Depot Side:
  *  1) Reset encoders + heading
  *  2) Back up a little (encoder distance + IMU hold)
- *  3) Shoot for ~7 seconds
+ *  3) Shoot for ~9 seconds
  *
  * This uses Drive's "blocking" helpers with timeouts,
  * which prevents the robot from getting stuck forever.
@@ -18,7 +18,7 @@ public class AutoDepotSide extends LinearOpMode {
 
     // Tunables (change these, not the logic)
     private static final double DRIVE_POWER = 0.35;  // if you see slip, drop to 0.30
-    private static final double BACK_UP_IN = -8.0;
+    private static final double BACK_UP_IN = -2.5;
     private static final double BACKUP_TIMEOUT_S = 2.5;
     private static final double SHOOT_TIME_S = 9.0;
 

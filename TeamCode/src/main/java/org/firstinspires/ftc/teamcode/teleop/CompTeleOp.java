@@ -8,7 +8,7 @@ import org.firstinspires.ftc.teamcode.core.Robot;
  * Competition TeleOp:
  *  - Gamepad 1: driver (mecanum)
  *  - Gamepad 2: operator (shooter)
- */
+ **/
 @TeleOp(name = "CompTeleOp", group = "TeleOp")
 public class CompTeleOp extends LinearOpMode {
 
@@ -30,12 +30,13 @@ public class CompTeleOp extends LinearOpMode {
             // ---------------- Driver (gamepad1) ----------------
             robot.drive.teleOpDrive(
                     gamepad1.left_stick_y,
-                    gamepad1.left_stick_x,
+                    -gamepad1.left_stick_x,
                     gamepad1.right_stick_x,
                     gamepad1.dpad_up,
                     gamepad1.dpad_down,
-                    gamepad1.dpad_left,
-                    gamepad1.dpad_right
+                    gamepad1.dpad_right,
+                    gamepad1.dpad_left
+
             );
 
             // ---------------- Operator (gamepad2) ----------------
